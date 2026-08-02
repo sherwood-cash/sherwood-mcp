@@ -1,0 +1,16 @@
+{
+  "name": "sherwood-mcp",
+  "version": "0.1.0",
+  "description": "MCP server exposing Sherwood Cash private trading (deposit, balance, swap, withdraw) to LLM agents, over the @sherwood-cash/sdk. Node-only.",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "sherwood-mcp": "server.mjs" },
+  "files": ["server.mjs", "README.md"],
+  "scripts": { "start": "node server.mjs" },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@sherwood-cash/sdk": "github:sherwood-cash/sherwood-sdk",
+    "zod": "^3.23.8"
+  }
+}
