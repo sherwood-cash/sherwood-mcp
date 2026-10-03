@@ -29,7 +29,7 @@ let unlocked = null
 const ready = () =>
   (unlocked ??= sherwood.signIn().then(() => sherwood.bridgeStatus().catch(() => null)))
 
-const ok = (data) => ({ content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] })
+const ok = (data) => ({ content: [{ type: 'text', text: JSON.stringify(data, (_, v) => (typeof v === 'bigint' ? v.toString() : v), 2) }] })
 const fail = (e) => ({ content: [{ type: 'text', text: `Error: ${e?.message ?? String(e)}` }], isError: true })
 
 const server = new McpServer({ name: 'sherwood-cash', version: '0.2.0' })
@@ -345,6 +345,115 @@ server.tool(
   async ({ token }) => {
     try {
       return ok(await sherwood.bridgeResume(token))
+    } catch (e) {
+      return fail(e)
+    }
+  },
+)
+
+server.tool(
+  'p2p_quote',
+  'P2P cash-out preview: the Base USDC an amount of a shielded asset becomes before it is listed on Peer for fiat (minimum 20 USDC), plus Peer fill speed per payout rail.',
+  { asset: z.string().default('eth'), amount: z.string().describe('human-readable amount') },
+  async ({ asset, amount }) => {
+    try {
+      await ready()
+      const [status, quote, fillStats] = await Promise.all([sherwood.p2pStatus(), sherwood.p2pQuote(asset, amount), sherwood.p2pFillStats().catch(() => null)])
+      return ok({ ...status, ...quote, fillStats })
+    } catch (e) {
+      return fail(e)
+    }
+  },
+)
+
+server.tool(
+  'p2p_cashout',
+  'Cash out of the shielded pool to FIAT through Peer (P2P): a relayed vault withdrawal is bridged to a fresh Base cash-out address, then (with `list`, default) listed on Peer so a buyer pays `handle` on `platform`. The agent wallet never appears. Track with p2p_order.',
+  {
+    asset: z.string().default('eth').describe('asset the vault pays (eth, or a token when the server allows)'),
+    amount: z.string().describe('human-readable amount'),
+    platform: z.string().describe('payout rail, e.g. venmo, cashapp, revolut, wise, zelle'),
+    handle: z.string().describe('the payee handle/tag on that rail'),
+    fiat: z.string().default('USD').describe('fiat currency code'),
+    refundTo: z.string().optional().describe('EVM address on this chain for refunds; defaults to the agent wallet'),
+    list: z.boolean().default(true).describe('wait for delivery (up to 30 min) and list on Peer; false = return once the withdrawal is sent'),
+  },
+  async ({ list, ...p }) => {
+    try {
+      await ready()
+      const { order, txHash } = await sherwood.p2pCashout(p)
+      const final = list ? await sherwood.p2pList(order.token) : order
+      return ok({ token: order.token, status: final.status, withdrawTx: txHash, peerDepositId: final.peerDepositId, usdcOut: final.usdcOut })
+    } catch (e) {
+      return fail(e)
+    }
+  },
+)
+
+server.tool(
+  'p2p_list',
+  'List a delivered P2P cash-out on Peer (waits for delivery up to `waitSeconds`). Use after p2p_cashout with list=false, or to retry.',
+  { token: z.string(), waitSeconds: z.number().int().min(0).max(3600).default(0) },
+  async ({ token, waitSeconds }) => {
+    try {
+      await ready()
+      return ok(await sherwood.p2pList(token, { timeoutMs: waitSeconds * 1000 }))
+    } catch (e) {
+      return fail(e)
+    }
+  },
+)
+
+server.tool(
+  'p2p_order',
+  'A P2P cash-out order\'s state, plus its live Peer listing (fills, remaining USDC) once listed.',
+  { token: z.string() },
+  async ({ token }) => {
+    try {
+      const order = await sherwood.p2pOrder(token)
+      const peer = order.peerDepositId ? await sherwood.p2pPeerOrder(order.peerDepositId).catch(() => null) : null
+      return ok({ order, peer })
+    } catch (e) {
+      return fail(e)
+    }
+  },
+)
+
+server.tool(
+  'p2p_history',
+  'This agent\'s P2P cash-outs, newest first (pseudonymous, shared with the web app).',
+  {},
+  async () => {
+    try {
+      await ready()
+      return ok((await sherwood.p2pHistory()).map((o) => ({ token: o.token, status: o.status, amountIn: o.amountIn, symbol: o.symbol, platform: o.platform, fiat: o.fiat, usdcOut: o.usdcOut, peerDepositId: o.peerDepositId, createdAt: o.createdAt })))
+    } catch (e) {
+      return fail(e)
+    }
+  },
+)
+
+server.tool(
+  'p2p_unlist',
+  'Close a Peer listing and take the unsold USDC back to the order\'s Base cash-out address.',
+  { token: z.string() },
+  async ({ token }) => {
+    try {
+      await ready()
+      return ok(await sherwood.p2pUnlist(token))
+    } catch (e) {
+      return fail(e)
+    }
+  },
+)
+
+server.tool(
+  'p2p_refund',
+  'Pull a P2P cash-out stuck for over an hour back to its refundTo address.',
+  { token: z.string() },
+  async ({ token }) => {
+    try {
+      return ok(await sherwood.p2pRefund(token))
     } catch (e) {
       return fail(e)
     }

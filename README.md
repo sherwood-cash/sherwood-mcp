@@ -76,6 +76,18 @@ funds wait on that address.
 The first proof downloads the circuit artifacts (~19 MB) to `~/.sherwood-sdk`. A freshly
 created note is only spendable once indexed, so a tool call can take a few seconds.
 
+### P2P cash-out (fiat via Peer)
+
+| Tool          | What it does                                                                     |
+| ------------- | -------------------------------------------------------------------------------- |
+| `p2p_quote`   | Base USDC an amount becomes (min 20) + Peer fill speed per rail                  |
+| `p2p_cashout` | vault → Base cash-out address → listed on Peer for a Venmo/Revolut/Wise… handle  |
+| `p2p_list`    | list a delivered order on Peer (or retry)                                        |
+| `p2p_order`   | an order's state + its live Peer listing                                         |
+| `p2p_history` | the agent's cash-outs (pseudonymous, shared with the web app)                    |
+| `p2p_unlist`  | close the Peer listing, unsold USDC back to the cash-out address                 |
+| `p2p_refund`  | pull a cash-out stuck over an hour back to `refundTo`                            |
+
 ## License
 
 MIT
